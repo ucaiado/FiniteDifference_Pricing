@@ -1,7 +1,7 @@
 FiniteDifference_Pricing
 ==================
 
-Implement the explicit [finite-difference method](https://en.wikipedia.org/wiki/Finite_difference_method) method to price derivatives, that almost always are described as differential equations of diffusion or parabolic type. The Finite-difference methods are precisely designed for finding numerical solutions of differential equations. This assignment was done as part of the Master in [Quantitative Finance ](http://eesp.fgv.br/ensino/mestrado-profissional/economia/area-financas-quantitativas) course, at the FGV University. You can check my report <a href="" target="_blank">here</a> (the text is in Portuguese). I will use mostly Python to code the project.
+Implement the explicit [finite-difference method](https://en.wikipedia.org/wiki/Finite_difference_method) method to price derivatives, that almost always are described as differential equations of diffusion or parabolic type. The Finite-difference methods are precisely designed for finding numerical solutions of differential equations. This assignment was done as part of the Master in [Quantitative Finance ](http://eesp.fgv.br/ensino/mestrado-profissional/economia/area-financas-quantitativas) course, at the FGV University. You can check my report <a href="https://nbviewer.jupyter.org/github/ucaiado/FiniteDifference_Pricing/blob/master/UiraCaiadoEx02.ipynb" target="_blank">here</a> (the text is in Portuguese). I will use mostly Python to code the project.
 
 
 ### Install
