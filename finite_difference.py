@@ -238,6 +238,60 @@ class Derivative(object):
         # interpola informacao
         return bilinear_interpolation(f_S, f_time, df)
 
+    def compare_to_analytical_solutions(self, l_S, f_time):
+        '''
+        Plot charts comparing the price, delta and gamma measure by the finitte
+        difference and by the analytical solution
+        l_S: list. asset price list
+        f_time. float. the time step to measure the outputs
+        '''
+        d_price = {u'analítico': [], u'diferenças finitas': []}
+        d_delta = {u'analítico': [], u'diferenças finitas': []}
+        d_gamma = {u'analítico': [], u'diferenças finitas': []}
+        l_prices = l_S
+        for f_S in l_prices:
+            # calcula precos
+            f_aux = self.get_information(f_S, f_time, 'price_anlt')
+            d_price[u'analítico'].append(f_aux)
+            f_aux = self.get_information(f_S, f_time, 'price')
+            d_price[u'diferenças finitas'].append(f_aux)
+            # calcula delta
+            f_aux = self.get_information(f_S, f_time, 'delta_anlt')
+            d_delta[u'analítico'].append(f_aux)
+            f_aux = self.get_information(f_S, f_time, 'delta')
+            d_delta[u'diferenças finitas'].append(f_aux)
+            # calcula gamma
+            f_aux = self.get_information(f_S, f_time, 'gamma_anlt')
+            d_gamma[u'analítico'].append(f_aux)
+            f_aux = self.get_information(f_S, f_time, 'gamma')
+            d_gamma[u'diferenças finitas'].append(f_aux)
+        # plota resultados
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=True)
+        fig.set_size_inches(12,4)
+
+        l_title = [u'Preços\n', u'$\Delta$\n', u'$\Gamma$\n']
+        for d_aux, ax, s_title in zip([d_price, d_delta, d_gamma],
+                                      [ax1, ax2, ax3], l_title):
+
+            s_col = u'diferenças finitas'
+            df_plot = pd.DataFrame(d_aux[s_col], index=l_prices)
+            df_plot.columns = [s_col]
+            df_plot.plot(ax=ax)
+            s_col = u'analítico'
+            df_plot = pd.DataFrame(d_aux[s_col], index=l_prices)
+            df_plot.columns = [s_col]
+            df_plot.plot(style='--', ax=ax)
+
+            # df_plot =  pd.DataFrame(d_aux, index=l_prices)
+            # df_plot.plot(ax=ax)
+            ax.set_xlabel(u'Preço do Subjacente')
+            ax.set_title(s_title)
+
+        ax1.set_ylabel(u'Valor')
+        s_prep = u"Comparação de Resultados para {}\n"
+        fig.suptitle(s_prep.format(self.s_name), fontsize=16, y=1.03)
+        fig.tight_layout()
+
     def _set_final_condition(self):
         '''
         Set up the final condition in the grid, the payoff
@@ -446,7 +500,7 @@ class EuropianCall(Derivative):
                                            i_nas=i_nas,
                                            f_K=f_K,
                                            i_nts=i_nts)
-        self.s_name = "Call Europeia"
+        self.s_name = 'Call Europeia'
         self._go_backwards()
         self._set_all_matrix()
 
@@ -485,7 +539,7 @@ class EuropianCall(Derivative):
         f_d1, f_d2 = get_d1_and_d2(f_S, self.f_sigma, f_time, self.f_r,
                                    self.f_K)
         pdf_d1 = stats.norm.pdf(f_d1, 0., 1.)
-        S_gima_sqrt_t = f_S * self.f_sigma * (f_time**2)
+        S_gima_sqrt_t = f_S * self.f_sigma * (f_time**0.5)
         return pdf_d1/S_gima_sqrt_t
 
 
@@ -496,3 +550,304 @@ class EuropianCall(Derivative):
         '''
         return max(0, f_asset_price - self.f_K)
 
+
+class LogContract(Derivative):
+    '''
+    A representation of a Log Contract
+    '''
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None, i_nts=None):
+        '''
+        Initialize a LogContract object. Save all parameters as attributes
+        :param f_St: float. The price of the underline asset
+        :param f_sigma: float. A non negative underline volatility
+        :param f_time: float. The time remain until the expiration
+        :param f_r: float. The free intereset rate
+        :param i_nas: integer. Number of asset steps
+        :param f_K: float. The strike
+        :*param i_nas: integer. Number of asset steps
+        '''
+        # inicia variaveis de Derivativo
+        super(LogContract, self).__init__(f_St=f_St,
+                                          f_sigma=f_sigma,
+                                          f_time=f_time,
+                                          f_r=f_r,
+                                          i_nas=i_nas,
+                                          f_K=f_K,
+                                          i_nts=i_nts)
+        self.s_name = 'Contrato Log'
+        self._go_backwards()
+        self._set_all_matrix()
+
+
+    def _get_analytical_price(self, f_S, f_time):
+        '''
+        Return the price of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+
+        exp_r_t = np.exp(-1 * self.f_r * f_time)
+        ln_S = np.log(f_S)
+        r_var_t = (self.f_r - (self.f_sigma**2.)/2.) * f_time
+        ln_S_r_var_t = ln_S + r_var_t
+        return exp_r_t * ln_S_r_var_t
+
+    def _get_analytical_delta(self, f_S, f_time):
+        '''
+        Return the delta of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        exp_r_t = np.exp(-1. * self.f_r * f_time)
+        return exp_r_t / f_S
+
+    def _get_analytical_gamma(self, f_S, f_time):
+        '''
+        Return the gamma of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        exp_r_t = np.exp(-1. * self.f_r * f_time)
+        return -1 * exp_r_t / f_S**2.
+
+
+    def _get_payoff(self, f_asset_price):
+        '''
+        Get the payoff of the contract
+        :param f_asset_price: float. The base asset price
+        '''
+        if f_asset_price == 0:
+            return 0.
+        return np.log(f_asset_price)
+
+
+class SquaredLogContract(Derivative):
+    '''
+    A representation of a Squared Log Contract
+    '''
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None, i_nts=None):
+        '''
+        Initialize a SquaredLogContract object. Save all parameters as
+        attributes
+        :param f_St: float. The price of the underline asset
+        :param f_sigma: float. A non negative underline volatility
+        :param f_time: float. The time remain until the expiration
+        :param f_r: float. The free intereset rate
+        :param i_nas: integer. Number of asset steps
+        :param f_K: float. The strike
+        :*param i_nas: integer. Number of asset steps
+        '''
+        # inicia variaveis de Derivativo
+        super(SquaredLogContract, self).__init__(f_St=f_St,
+                                                 f_sigma=f_sigma,
+                                                 f_time=f_time,
+                                                 f_r=f_r,
+                                                 i_nas=i_nas,
+                                                 f_K=f_K,
+                                                 i_nts=i_nts)
+        self.s_name = 'Contrato Log Quadratico'
+        self._go_backwards()
+        self._set_all_matrix()
+
+
+    def _get_analytical_price(self, f_S, f_time):
+        '''
+        Return the price of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        exp_r_t = np.exp(-1*self.f_r*f_time)
+        ln_S_r_var_t_sq = (np.log(f_S) + (self.f_r -
+                           (self.f_sigma**2.)/2.) * f_time)**2.
+        var_t = self.f_sigma**2. * f_time
+        return exp_r_t * (ln_S_r_var_t_sq + var_t)
+
+    def _get_analytical_delta(self, f_S, f_time):
+        '''
+        Return the delta of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        two_exp_r_t_over_S = 2 * np.exp(-1*self.f_r*f_time) / f_S
+        ln_S_r_var_t = (np.log(f_S) + (self.f_r -
+                        (self.f_sigma**2)/2) * f_time)
+        return two_exp_r_t_over_S * ln_S_r_var_t
+
+    def _get_analytical_gamma(self, f_S, f_time):
+        '''
+        Return the gamma of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        ln_S =  np.log(f_S)
+        r_t = self.f_r * f_time
+        if f_S == 0:
+            ln_S = 0
+        exp_r_t = np.exp(-1. * r_t)
+        sigma_sqr_t = self.f_sigma**2 * f_time
+        f_rtn = exp_r_t / f_S**2. * (2 + sigma_sqr_t - 2 * ln_S - 2 * r_t)
+        return f_rtn
+
+    def _get_payoff(self, f_asset_price):
+        '''
+        Get the payoff of the contract
+        :param f_asset_price: float. The base asset price
+        '''
+        if f_asset_price == 0:
+            return 0.
+        return np.log(f_asset_price) ** 2
+
+
+class SquaredExotic(Derivative):
+    '''
+    A representation of a exotic suqared contract. The Strike is given
+    '''
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None, i_nts=None):
+        '''
+        Initialize a SquaredExotic object. Save all parameters as attributes
+        :param f_St: float. The price of the underline asset
+        :param f_sigma: float. A non negative underline volatility
+        :param f_time: float. The time remain until the expiration
+        :param f_r: float. The free intereset rate
+        :param i_nas: integer. Number of asset steps
+        :param f_K: float. The strike
+        :*param i_nas: integer. Number of asset steps
+        '''
+        # inicia variaveis de Derivativo
+        super(SquaredExotic, self).__init__(f_St=f_St,
+                                            f_sigma=f_sigma,
+                                            f_time=f_time,
+                                            f_r=f_r,
+                                            i_nas=i_nas,
+                                            f_K=f_K,
+                                            i_nts=i_nts)
+        self.s_name = "Exotico Quadratico"
+        self._go_backwards()
+        self._set_all_matrix()
+
+
+    def _get_analytical_price(self, f_S, f_time):
+        '''
+        Return the price of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        exp_r_var_t = np.exp((self.f_r + self.f_sigma**2)*f_time)
+        S_sq_exp_r_var_t = f_S**2 * exp_r_var_t
+        K_sq_exp_r_t = self.f_K**2 * np.exp(-self.f_r * f_time)
+        two_S_K = 2 * f_S * self.f_K
+        return S_sq_exp_r_var_t - two_S_K + K_sq_exp_r_t
+
+    def _get_analytical_delta(self, f_S, f_time):
+        '''
+        Return the delta of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        exp_r_var_t = np.exp((self.f_r + self.f_sigma**2)*f_time)
+        two_K = 2. * self.f_K
+
+        return 2.* f_S * exp_r_var_t - two_K
+
+    def _get_analytical_gamma(self, f_S, f_time):
+        '''
+        Return the gamma of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        return 2 * np.exp((self.f_r + self.f_sigma**2)*f_time)
+
+    def _get_payoff(self, f_asset_price):
+        '''
+        Get the payoff of the contract
+        :param f_asset_price: float. The base asset price
+        '''
+        if f_asset_price == 0:
+            return 0.
+        return (f_asset_price - self.f_K) ** 2
+
+    def _apply_boundary_conditions(self, k):
+        '''
+        Apply boundary conditions
+        :param k: integer. The time k step
+        '''
+        # para S = 0
+        dt = self.grid.dt
+        dS = self.grid.dS
+        i_nas = int(self.grid.f_nas)
+        f_rtn1 = self(0, k - 1).f_option_value * (1 - self.f_r * dt)
+        # para S=inf
+        f_rtn2 = 2 * self(i_nas - 1, k).f_option_value
+        f_rtn2 -= self(i_nas - 2, k).f_option_value
+        # adaptando condicao ao contrato
+        f_rtn2 += (2 * dS**2)
+        return f_rtn1, f_rtn2
+
+
+class DigitalOption(Derivative):
+    '''
+    A representation of a Digital Option.
+    '''
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K, i_nts=None):
+        '''
+        Initialize a DigitalOption object. Save all parameters as attributes
+        :param f_St: float. The price of the underline asset
+        :param f_sigma: float. A non negative underline volatility
+        :param f_time: float. The time remain until the expiration
+        :param f_r: float. The free intereset rate
+        :param i_nas: integer. Number of asset steps
+        :param f_K: float. The strike
+        :*param i_nas: integer. Number of asset steps
+        '''
+        # inicia variaveis de Derivativo
+        super(LogContract, self).__init__(f_St=f_St,
+                                          f_sigma=f_sigma,
+                                          f_time=f_time,
+                                          f_r=f_r,
+                                          i_nas=i_nas,
+                                          f_K=f_K,
+                                          i_nts=i_nts)
+        self.s_name = 'Opcao Digital'
+        self._go_backwards()
+        self._set_all_matrix()
+
+
+    def _get_analytical_price(self, f_S, f_time):
+        '''
+        Return the price of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        f_d1, f_d2 = get_d1_and_d2(self.f_St, self.f_sigma, f_time,
+                                   self.f_r, self.f_K)
+        exp_r_t = np.exp(-self.f_r * f_time)
+        cdf_d2 = stats.norm.cdf(f_d2, 0., 1.)
+        return exp_r_t * cdf_d2
+
+    def _get_analytical_delta(self, f_S, f_time):
+        '''
+        Return the delta of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        exp_r_t = np.exp(-1. * self.f_r * f_time)
+        return exp_r_t / f_S
+
+    def _get_analytical_gamma(self, f_S, f_time):
+        '''
+        Return the gamma of the instrument using its analytical solution
+        :param f_S: float. the asset price
+        :param f_time: float.time to expiration
+        '''
+        exp_r_t = np.exp(-1. * self.f_r * f_time)
+        return -1 * exp_r_t / f_S**2.
+
+
+    def _get_payoff(self, f_asset_price):
+        '''
+        Get the payoff of the contract
+        :param f_asset_price: float. The base asset price
+        '''
+        if f_asset_price == 0:
+            return 0.
+        return np.log(f_asset_price)
