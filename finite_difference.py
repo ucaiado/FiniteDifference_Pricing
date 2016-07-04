@@ -185,11 +185,12 @@ class Grid(object):
                 df_rtn.ix[i, k] = valid_node
         return str(df_rtn)
 
+
 class Derivative(object):
     '''
     A general representation of a Derivative contract.
     '''
-    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K = None,
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None,
                  i_nts=None):
         '''
         Initialize a Derivative object. Save all parameters as attributes
@@ -224,17 +225,17 @@ class Derivative(object):
         '''
         # define dataframe desejado
         if s_info == 'price':
-            df =  self.df_opt_prices
+            df = self.df_opt_prices
         elif s_info == 'price_anlt':
-            df =  self.df_opt_prices_anlt
+            df = self.df_opt_prices_anlt
         elif s_info == 'delta':
-            df =  self.df_delta
+            df = self.df_delta
         elif s_info == 'delta_anlt':
-            df =  self.df_delta_anlt
+            df = self.df_delta_anlt
         elif s_info == 'gamma':
-            df =  self.df_gamma
+            df = self.df_gamma
         elif s_info == 'gamma_anlt':
-            df =  self.df_gamma_anlt
+            df = self.df_gamma_anlt
         # interpola informacao
         return bilinear_interpolation(f_S, f_time, df)
 
@@ -267,7 +268,7 @@ class Derivative(object):
             d_gamma[u'diferenças finitas'].append(f_aux)
         # plota resultados
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=True)
-        fig.set_size_inches(12,4)
+        fig.set_size_inches(12, 4)
 
         l_title = [u'Preços\n', u'$\Delta$\n', u'$\Gamma$\n']
         for d_aux, ax, s_title in zip([d_price, d_delta, d_gamma],
@@ -343,7 +344,7 @@ class Derivative(object):
                 f_V_im1_km1 = self(i-1, k-1).f_option_value
                 f_V_i_km1 = self(i, k-1).f_option_value
                 # calcula gregas por diferenca central
-                f_delta = (f_V_ip1_km1 - f_V_im1_km1) / (2.* dS)
+                f_delta = (f_V_ip1_km1 - f_V_im1_km1) / (2. * dS)
                 f_gamma = (f_V_ip1_km1 - 2 * f_V_i_km1 + f_V_im1_km1) / (dS**2)
                 # calcula theta Vki−Vk+1iδt
                 f_theta = f_r * f_V_i_km1 - f_r * f_S * f_delta
@@ -436,7 +437,7 @@ class Derivative(object):
         '''
         return f_value
 
-    def _get_analytical_price(self,f_S, f_time):
+    def _get_analytical_price(self, f_S, f_time):
         '''
         Return the price of the instrument using its analytical solution
         :param f_S: float. the asset price
@@ -444,7 +445,7 @@ class Derivative(object):
         '''
         raise NotImplementedError
 
-    def _get_analytical_delta(self,f_S, f_time):
+    def _get_analytical_delta(self, f_S, f_time):
         '''
         Return the delta of the instrument using its analytical solution
         :param f_S: float. the asset price
@@ -452,7 +453,7 @@ class Derivative(object):
         '''
         raise NotImplementedError
 
-    def _get_analytical_gamma(self,f_S, f_time):
+    def _get_analytical_gamma(self, f_S, f_time):
         '''
         Return the gamma of the instrument using its analytical solution
         :param f_S: float. the asset price
@@ -504,7 +505,6 @@ class EuropianCall(Derivative):
         self._go_backwards()
         self._set_all_matrix()
 
-
     def _get_analytical_price(self, f_S, f_time):
         '''
         Return the price of the instrument using its analytical solution
@@ -542,7 +542,6 @@ class EuropianCall(Derivative):
         S_gima_sqrt_t = f_S * self.f_sigma * (f_time**0.5)
         return pdf_d1/S_gima_sqrt_t
 
-
     def _get_payoff(self, f_asset_price):
         '''
         Get the payoff of the contract
@@ -555,7 +554,8 @@ class LogContract(Derivative):
     '''
     A representation of a Log Contract
     '''
-    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None, i_nts=None):
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None,
+                 i_nts=None):
         '''
         Initialize a LogContract object. Save all parameters as attributes
         :param f_St: float. The price of the underline asset
@@ -577,7 +577,6 @@ class LogContract(Derivative):
         self.s_name = 'Contrato Log'
         self._go_backwards()
         self._set_all_matrix()
-
 
     def _get_analytical_price(self, f_S, f_time):
         '''
@@ -610,7 +609,6 @@ class LogContract(Derivative):
         exp_r_t = np.exp(-1. * self.f_r * f_time)
         return -1 * exp_r_t / f_S**2.
 
-
     def _get_payoff(self, f_asset_price):
         '''
         Get the payoff of the contract
@@ -625,7 +623,8 @@ class SquaredLogContract(Derivative):
     '''
     A representation of a Squared Log Contract
     '''
-    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None, i_nts=None):
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None,
+                 i_nts=None):
         '''
         Initialize a SquaredLogContract object. Save all parameters as
         attributes
@@ -648,7 +647,6 @@ class SquaredLogContract(Derivative):
         self.s_name = 'Contrato Log Quadratico'
         self._go_backwards()
         self._set_all_matrix()
-
 
     def _get_analytical_price(self, f_S, f_time):
         '''
@@ -679,7 +677,7 @@ class SquaredLogContract(Derivative):
         :param f_S: float. the asset price
         :param f_time: float.time to expiration
         '''
-        ln_S =  np.log(f_S)
+        ln_S = np.log(f_S)
         r_t = self.f_r * f_time
         if f_S == 0:
             ln_S = 0
@@ -702,7 +700,8 @@ class SquaredExotic(Derivative):
     '''
     A representation of a exotic suqared contract. The Strike is given
     '''
-    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None, i_nts=None):
+    def __init__(self, f_St, f_sigma, f_time, f_r, i_nas, f_K=None,
+                 i_nts=None):
         '''
         Initialize a SquaredExotic object. Save all parameters as attributes
         :param f_St: float. The price of the underline asset
@@ -721,10 +720,9 @@ class SquaredExotic(Derivative):
                                             i_nas=i_nas,
                                             f_K=f_K,
                                             i_nts=i_nts)
-        self.s_name = "Exotico Quadratico"
+        self.s_name = 'Exotico Quadratico'
         self._go_backwards()
         self._set_all_matrix()
-
 
     def _get_analytical_price(self, f_S, f_time):
         '''
@@ -747,7 +745,7 @@ class SquaredExotic(Derivative):
         exp_r_var_t = np.exp((self.f_r + self.f_sigma**2)*f_time)
         two_K = 2. * self.f_K
 
-        return 2.* f_S * exp_r_var_t - two_K
+        return 2. * f_S * exp_r_var_t - two_K
 
     def _get_analytical_gamma(self, f_S, f_time):
         '''
@@ -800,17 +798,16 @@ class DigitalOption(Derivative):
         :*param i_nas: integer. Number of asset steps
         '''
         # inicia variaveis de Derivativo
-        super(LogContract, self).__init__(f_St=f_St,
-                                          f_sigma=f_sigma,
-                                          f_time=f_time,
-                                          f_r=f_r,
-                                          i_nas=i_nas,
-                                          f_K=f_K,
-                                          i_nts=i_nts)
+        super(DigitalOption, self).__init__(f_St=f_St,
+                                            f_sigma=f_sigma,
+                                            f_time=f_time,
+                                            f_r=f_r,
+                                            i_nas=i_nas,
+                                            f_K=f_K,
+                                            i_nts=i_nts)
         self.s_name = 'Opcao Digital'
         self._go_backwards()
         self._set_all_matrix()
-
 
     def _get_analytical_price(self, f_S, f_time):
         '''
@@ -818,8 +815,8 @@ class DigitalOption(Derivative):
         :param f_S: float. the asset price
         :param f_time: float.time to expiration
         '''
-        f_d1, f_d2 = get_d1_and_d2(self.f_St, self.f_sigma, f_time,
-                                   self.f_r, self.f_K)
+        f_d1, f_d2 = get_d1_and_d2(f_S, self.f_sigma, f_time, self.f_r,
+                                   self.f_K)
         exp_r_t = np.exp(-self.f_r * f_time)
         cdf_d2 = stats.norm.cdf(f_d2, 0., 1.)
         return exp_r_t * cdf_d2
@@ -830,8 +827,12 @@ class DigitalOption(Derivative):
         :param f_S: float. the asset price
         :param f_time: float.time to expiration
         '''
-        exp_r_t = np.exp(-1. * self.f_r * f_time)
-        return exp_r_t / f_S
+        f_d1, f_d2 = get_d1_and_d2(f_S, self.f_sigma, f_time, self.f_r,
+                                   self.f_K)
+        exp_r_t = np.exp(-self.f_r * self.f_time)
+        pdf_d2 = stats.norm.pdf(f_d2, 0., 1.)
+        sig_S_sqtr_t = self.f_sigma * self.f_St * (self.f_time**0.5)
+        return exp_r_t * pdf_d2 / sig_S_sqtr_t
 
     def _get_analytical_gamma(self, f_S, f_time):
         '''
@@ -839,15 +840,17 @@ class DigitalOption(Derivative):
         :param f_S: float. the asset price
         :param f_time: float.time to expiration
         '''
-        exp_r_t = np.exp(-1. * self.f_r * f_time)
-        return -1 * exp_r_t / f_S**2.
-
+        f_d1, f_d2 = get_d1_and_d2(f_S, self.f_sigma, f_time, self.f_r,
+                                   self.f_K)
+        exp_r_t = np.exp(-self.f_r * f_time)
+        sig_S_sqtr_t = self.f_sigma * f_S * (f_time**0.5)
+        cdf_d2 = stats.norm.cdf(f_d2, 0., 1.)
+        S_sqr_var_t = f_S**2 * self.f_sigma**2 * f_time
+        return (-1. * exp_r_t * f_d1 * cdf_d2) / S_sqr_var_t
 
     def _get_payoff(self, f_asset_price):
         '''
         Get the payoff of the contract
         :param f_asset_price: float. The base asset price
         '''
-        if f_asset_price == 0:
-            return 0.
-        return np.log(f_asset_price)
+        return 1. * (f_asset_price > self.f_K)
