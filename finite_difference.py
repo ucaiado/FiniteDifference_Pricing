@@ -17,6 +17,7 @@ import pandas as pd
 from scipy import stats
 import seaborn as sns
 import time
+from scipy.optimize import minimize
 
 '''
 Begin help functions
@@ -26,6 +27,13 @@ Begin help functions
 class STABILITY_ERROR(Exception):
     '''
     STABILITY_ERROR is raised by the init method of the Grid class
+    '''
+    pass
+
+
+class UNSUCCESSFUL_ERROR(Exception):
+    '''
+    UNSUCCESSFUL_ERROR is raised by the static hedhing minimization
     '''
     pass
 
@@ -970,3 +978,388 @@ class EuropianCallButterfly(Derivative):
         for f_q, f_K in zip(self.l_Q, self.l_K):
             f_payoff += max(0, f_asset_price - f_K)*f_q
         return f_payoff
+
+
+class Derivative_UVM(object):
+    '''
+    A general representation of a Derivative contract precifed using UVM
+    '''
+    def __init__(self, f_volm, f_volM, f_intrate, s_ptype, l_strike, l_qty,
+                 f_expiration, f_NAS, b_worstcase=True):
+        '''
+        Initialize a Derivative_UVM object. Save all parameters as attributes
+        :param f_volm: float. The minimum underline volatility to be observed
+        :param f_volM: float. The maximum underline volatility to be observed
+        :param f_intrate: float. The risk free intereset rate
+        :param s_ptype: string. Pur ot Call. 'P' or 'C'
+        :param l_strike: list. Strikes in a array (1,3)
+        :param l_qty: list. Normalized Qty in a array (1,3)
+        :param f_expiration: float. The time remain until the expiration
+        :param f_NAS: float. Number of asset steps
+        :*param b_worstcase: boolean. if should use the worst or best case
+        '''
+        self.f_volm = f_volm
+        self.f_volM = f_volM
+        self.f_intrate = f_intrate
+        self.s_ptype = s_ptype
+        self.l_strike = l_strike
+        self.f_strike = self.l_strike[1]
+        self.l_qty = l_qty
+        self.org_l_qty = l_qty
+        self.f_expiration = f_expiration
+        self.f_NAS = f_NAS
+        self.b_worstcase = b_worstcase
+        self.s_name = 'Generico'
+        self.OPTION = None
+
+    def get_information(self, f_S, f_time, s_info):
+        '''
+        Recover information desired, interpolating values and not available
+        :param f_S: float. asset price
+        :param f_time: float. time in years
+        :param s_info: string. information desired. delta, gamma, price
+        '''
+        # define dataframe desejado
+        if s_info == 'price':
+            df = self.df_price
+        elif s_info == 'gamma':
+            df = self.df_gamma
+        elif s_info == 'delta':
+            df = self.df_delta
+        # interpola informacao
+        return bilinear_interpolation(f_S, f_time, df)
+
+    def get_optimized_satic_hedging(self, f_S0, na_V0,
+                                    bounds=((-1.3, -0.), (-1.3, -0.))):
+        '''
+        Return the best Static hedging with traded options to improve prices,
+        given boundaries and constrains to thr minimizer
+        :param f_S0: numpy array. qtaties of the fisrt and last leg
+        :param na_V0: numpy array. qtaties of the fisrt and last leg
+        :param bounds : tuple. the boundaries to minimization
+        '''
+        # define the parameters
+        d = {'f_volm': self.f_volm,
+             'f_volM': self.f_volM,
+             'f_intrate': self.f_intrate,
+             's_ptype': self.s_ptype,
+             'l_strike': self.l_strike,
+             'l_qty': self.l_qty,
+             'f_expiration': self.f_expiration,
+             'f_NAS': self.f_NAS}
+        # define if it is a minimization or maximization problem
+        q = -1.
+        f_middle = 1.
+        if self.l_qty[1] < 0:
+            f_middle = -1.
+            q = 1.
+            bounds = ((0., 1.3), (0., 1.3))
+        # make sure that the sum of each leg is at lest 0.8
+        cons = ({'type': 'ineq',
+                 'fun': lambda x: np.array([1.3 - abs(x[1] + x[0])])},
+                {'type': 'ineq',
+                 'fun': lambda x: np.array([abs(x[1] + x[0]) - 0.3])})
+        # minimize what is desired
+        l_x = [-0.5, -0.5]
+        res = minimize(self._best_price, l_x, tol=10e-6,
+                       args=(f_middle, d, f_S0, na_V0, q),
+                       bounds=bounds,
+                       constraints=cons)
+        if not res.success:
+            raise UNSUCCESSFUL_ERROR
+        l_qty = list(res.x)
+        return [l_qty[0], f_middle, l_qty[1]]
+
+    def get_middle_price(self, f_S0, na_V0, f_time):
+        '''
+        Return the price to be traded at the middle
+        :param f_S0: numpy array. price of the spot
+        :param na_V0: numpy array. prices of fisrt and third leg
+        '''
+        # initialize and calculate the prices using OPTION
+        na_x = np.array([self.l_qty[0], self.l_qty[2]])
+        f_V = self.get_information(f_S0, f_time, 'price')
+        f_already_paid = sum(na_V0 * np.array(na_x))
+        return (f_V - f_already_paid) * self.l_qty[1]
+
+    def plot_all_solutions(self, l_S, f_time=10e-6):
+        '''
+        Plot charts all solutions obtained by the method to the price, delta
+        and gamma measure by the finitte difference using UVM
+        :param l_S: list. asset price list
+        :*param f_time. float. the time step to measure the outputs
+        '''
+        d_price = {u'diferenças finitas': []}
+        d_delta = {u'diferenças finitas': []}
+        d_gamma = {u'diferenças finitas': []}
+        l_prices = l_S
+        for f_S in l_prices:
+            # calcula precos
+            f_aux = self.get_information(f_S, f_time, 'price')
+            d_price[u'diferenças finitas'].append(f_aux)
+            # calcula delta
+            f_aux = self.get_information(f_S, f_time, 'delta')
+            d_delta[u'diferenças finitas'].append(f_aux)
+            # calcula gamma
+            f_aux = self.get_information(f_S, f_time, 'gamma')
+            d_gamma[u'diferenças finitas'].append(f_aux)
+        # plota resultados
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=True)
+        fig.set_size_inches(12, 4)
+
+        l_title = [u'Preços\n', u'$\Delta$\n', u'$\Gamma$\n']
+        for d_aux, ax, s_title in zip([d_price, d_delta, d_gamma],
+                                      [ax1, ax2, ax3], l_title):
+
+            s_col = u'diferenças finitas'
+            df_plot = pd.DataFrame(d_aux[s_col], index=l_prices)
+            df_plot.columns = [s_col]
+            df_plot.plot(ax=ax, legend=False)
+
+            # df_plot =  pd.DataFrame(d_aux, index=l_prices)
+            # df_plot.plot(ax=ax)
+            ax.set_xlabel(u'Preço do Subjacente')
+            ax.set_title(s_title)
+
+        ax1.set_ylabel(u'Valor')
+        s_prep = u'Soluções Obtidas para {}\n'
+        fig.suptitle(s_prep.format(self.s_name), fontsize=16, y=1.03)
+        fig.tight_layout()
+
+    def _best_price(self, na_x, f_middle, d_param, f_S0, na_V0, f_max):
+        '''
+        Return the best price fo the strategy evaluated, minimize the
+        quantities
+        :param na_x: numpy array. qtaties of the fisrt and last leg
+        :param f_middle: float. qty of the midle leg
+        :param d_param: dictinary. Parameters of the function
+        :param f_S0: numpy array. qtaties of the fisrt and last leg
+        :param na_V0: numpy array. qtaties of the fisrt and last leg
+        :param d_opt_param: dictionary. parameters to be used in option eval
+        :param f_max: float. -1 to find the maximum and 1 to find the minimum
+        '''
+        # define the parameters
+        d = d_param.copy()
+        # redefine qtties
+        l_qty = list(na_x)[:]
+        l_qty.insert(1, f_middle)
+        d['l_qty'] = l_qty
+        # initialize and calculate the prices using OPTION
+        my_uvmoption = self.OPTION(**d)
+        f_V = my_uvmoption.get_information(f_S0, d['f_expiration'], 'price')
+        f_already_paid = sum(na_V0 * np.array(na_x))
+        return (f_V - f_already_paid) * f_middle * f_max
+
+    def _early_exercise(self, na_V, na_payoff):
+        '''
+        Modify the derivative value if it is subject to early exercise
+        :param na_V: numpy array. Option prices
+        :param na_payoff: numpy array. Payoffs
+        '''
+        return na_V
+
+    def _get_payoff(self, f_asset_price):
+        '''
+        Get the payoff of the contract
+        :param f_asset_price: float. The base asset price
+        '''
+        raise NotImplementedError()
+
+    def _go_backwards(self):
+        '''
+        Work backwards in time to calculate the option value. Use Wilmott
+        implementation of finite difference method
+        '''
+        # recover variables
+        f_volm = self.f_volm
+        f_volM = self.f_volM
+        f_intrate = self.f_intrate
+        s_ptype = self.s_ptype
+        f_expiration = self.f_expiration
+        f_NAS = self.f_NAS
+        b_worstcase = self.b_worstcase
+        # initiate vaiables
+        i_NAS = int(f_NAS)
+        #   infinity is twice the strike
+        dS = 2 * self.f_strike / f_NAS
+        #   for stability
+        dt = 0.9 / f_volM ** 2 / f_NAS**2
+        #   number of time steps
+        i_NTS = int(f_expiration/dt) + 1
+        dt = f_expiration / float(i_NTS)
+        f_sigma = (f_volm+f_volM)/2.
+
+        # initiate the arrays used in solution
+        na_S = np.zeros(i_NAS + 1)
+        na_payoff = np.zeros(i_NAS + 1)
+        na_V = np.zeros([i_NAS + 1, i_NTS+1])
+        na_Delta = np.zeros([i_NAS + 1, i_NTS+1])
+        na_Gamma = np.zeros([i_NAS + 1, i_NTS+1])
+
+        # define the terminal value
+        for i in xrange(i_NAS+1):
+            na_S[i] = i * dS
+            f_rtn = self._get_payoff(na_S[i])
+            # calculate the payoff at the end of the maturity
+            na_V[i][0] = f_rtn
+            # store payoff
+            na_payoff[i] = na_V[i][0]
+        # time loop
+        for k in xrange(1, i_NTS+1):
+            # asset loop
+            for i in xrange(1, i_NAS):
+                f_delta = (na_V[i+1][k-1] - na_V[i-1][k-1]) / (2.*dS)
+                f_gamma = (na_V[i+1][k-1] - 2 * na_V[i][k-1] + na_V[i-1][k-1])
+                f_gamma /= dS**2
+                f_vol = 0.
+                if b_worstcase:
+                    # worst case scenario
+                    if f_gamma < 0.:
+                        f_vol = f_volM
+                    elif f_gamma > 0.:
+                        f_vol = f_volm
+                else:
+                    # best case scenario
+                    if f_gamma > 0.:
+                        f_vol = f_volM
+                    elif f_gamma < 0.:
+                        f_vol = f_volm
+                f_theta = -0.5*f_vol**2 * na_S[i]**2 * f_gamma
+                f_theta -= f_intrate*na_S[i]*f_delta
+                f_theta += f_intrate * na_V[i][k-1]
+                na_Delta[i][k] = f_delta
+                na_Gamma[i][k] = f_gamma
+                na_V[i][k] = na_V[i][k-1] - dt * f_theta
+            # boundaty codition at S=0
+            na_V[0][k] = na_V[0][k-1] * (1. - f_intrate * dt)
+            # boundary condition at S=infinity
+            na_V[i_NAS][k] = 2 * na_V[i_NAS-1][k] - na_V[i_NAS-2][k]
+            # checking for early exercise
+            na_V.T[k] = self._early_exercise(na_V.T[k], na_payoff)
+
+        df_price = pd.DataFrame(na_V)
+        df_gamma = pd.DataFrame(na_Gamma)
+        df_delta = pd.DataFrame(na_Delta)
+        for df in [df_price, df_gamma, df_delta]:
+            df.index = na_S
+            na_time = np.arange(i_NTS+1) * dt
+            na_time[-1] = f_expiration
+            df.columns = na_time
+
+        return df_price, df_delta, df_gamma
+
+
+class EuropianVanillaUvm(Derivative_UVM):
+    '''
+    A representation of a strategy of europian options that can use
+    three legs at most
+    '''
+    def __init__(self, f_volm, f_volM, f_intrate, s_ptype, l_strike, l_qty,
+                 f_expiration, f_NAS):
+        '''
+        Initiate a EuropianVanillaUvm object. Sale all parametes as attrubutes
+        :param f_volm: float. The minimum underline volatility to be observed
+        :param f_volM: float. The maximum underline volatility to be observed
+        :param f_intrate: float. The risk free intereset rate
+        :param s_ptype: string. Pur ot Call. 'P' or 'C'
+        :param l_strike: list. Strikes in a array (1,3)
+        :param l_qty: list. Normalized Qty in a array (1,3)
+        :param f_expiration: float. The time remain until the expiration
+        :param f_NAS: float. Number of asset steps
+        '''
+        super(EuropianVanillaUvm, self).__init__(f_volm=f_volm,
+                                                 f_volM=f_volM,
+                                                 f_intrate=f_intrate,
+                                                 s_ptype=s_ptype,
+                                                 l_strike=l_strike,
+                                                 l_qty=l_qty,
+                                                 f_expiration=f_expiration,
+                                                 f_NAS=f_NAS,
+                                                 b_worstcase=True)
+        s_type = 'Put'
+        if s_ptype == 'C':
+            s_type = 'Call'
+        self.s_name = 'Estrat. com {} Europeia: '.format(s_type)
+        self.s_name += '[{:0.1f}, {:0.1f}, {:0.1f}]\n'
+        self.s_name = self.s_name.format(*l_qty)
+        self.df_price, self.df_delta, self.df_gamma = self._go_backwards()
+        self.OPTION = EuropianVanillaUvm
+
+    def _early_exercise(self, na_V, na_payoff):
+        '''
+        Modify the derivative value if it is subject to early exercise
+        '''
+        return na_V
+
+    def _get_payoff(self, f_asset_price):
+        '''
+        Get the payoff of the contract
+        :param f_asset_price: float. The base asset price
+        '''
+        # test for call or put
+        q = 1.
+        if self.s_ptype == 'P':
+            q = -1.
+        # calculate the payoff
+        f_rtn = 0
+        for f_qty, f_K in zip(self.l_qty, self.l_strike):
+            f_rtn += max(q * (f_asset_price - f_K), 0) * f_qty
+        return f_rtn
+
+
+class AmericanVanillaUvm(Derivative_UVM):
+    '''
+    A representation of a strategy of amarican options that can use
+    three legs at most
+    '''
+    def __init__(self, f_volm, f_volM, f_intrate, s_ptype, l_strike, l_qty,
+                 f_expiration, f_NAS):
+        '''
+        Initiate a AmericanVanillaUvm object. Sale all parametes as attrubutes
+        :param f_volm: float. The minimum underline volatility to be observed
+        :param f_volM: float. The maximum underline volatility to be observed
+        :param f_intrate: float. The risk free intereset rate
+        :param s_ptype: string. Pur ot Call. 'P' or 'C'
+        :param l_strike: list. Strikes in a array (1,3)
+        :param l_qty: list. Normalized Qty in a array (1,3)
+        :param f_expiration: float. The time remain until the expiration
+        :param f_NAS: float. Number of asset steps
+        '''
+        super(AmericanVanillaUvm, self).__init__(f_volm=f_volm,
+                                                 f_volM=f_volM,
+                                                 f_intrate=f_intrate,
+                                                 s_ptype=s_ptype,
+                                                 l_strike=l_strike,
+                                                 l_qty=l_qty,
+                                                 f_expiration=f_expiration,
+                                                 f_NAS=f_NAS,
+                                                 b_worstcase=True)
+        s_type = 'Put'
+        if s_ptype == 'C':
+            s_type = 'Call'
+        self.s_name = 'Estrat. com {} Americana: '.format(s_type)
+        self.s_name += '[{:0.1f}, {:0.1f}, {:0.1f}]\n'
+        self.s_name = self.s_name.format(*l_qty)
+        self.df_price, self.df_delta, self.df_gamma = self._go_backwards()
+        self.OPTION = AmericanVanillaUvm
+
+    def _early_exercise(self, na_V, na_payoff):
+        '''
+        Modify the derivative value if it is subject to early exercise
+        '''
+        return np.amax((np.array([na_V, na_payoff]).T), axis=1)
+
+    def _get_payoff(self, f_asset_price):
+        '''
+        Get the payoff of the contract
+        :param f_asset_price: float. The base asset price
+        '''
+        # test for call or put
+        q = 1.
+        if self.s_ptype == 'P':
+            q = -1.
+        # calculate the payoff
+        f_rtn = 0
+        for f_qty, f_K in zip(self.l_qty, self.l_strike):
+            f_rtn += max(q * (f_asset_price - f_K), 0) * f_qty
+        return f_rtn
