@@ -1005,7 +1005,6 @@ class Derivative_UVM(object):
         self.l_strike = l_strike
         self.f_strike = self.l_strike[1]
         self.l_qty = l_qty
-        self.org_l_qty = l_qty
         self.f_expiration = f_expiration
         self.f_NAS = f_NAS
         self.b_worstcase = b_worstcase
@@ -1030,7 +1029,7 @@ class Derivative_UVM(object):
         return bilinear_interpolation(f_S, f_time, df)
 
     def get_optimized_satic_hedging(self, f_S0, na_V0,
-                                    bounds=((-1.3, -0.), (-1.3, -0.))):
+                                    bounds=((-1.5, -0.), (-1.5, -0.))):
         '''
         Return the best Static hedging with traded options to improve prices,
         given boundaries and constrains to thr minimizer
@@ -1048,27 +1047,27 @@ class Derivative_UVM(object):
              'f_expiration': self.f_expiration,
              'f_NAS': self.f_NAS}
         # define if it is a minimization or maximization problem
-        q = -1.
+        f_max = -1.
         f_middle = 1.
         if self.l_qty[1] < 0:
             f_middle = -1.
-            q = 1.
-            bounds = ((0., 1.3), (0., 1.3))
-        # make sure that the sum of each leg is at lest 0.8
+            f_max = 1.
+            bounds = ((0., 1.5), (0., 1.5))
+        # make sure that the sum of legs is <=1.5 and >= 0.3
         cons = ({'type': 'ineq',
-                 'fun': lambda x: np.array([1.3 - abs(x[1] + x[0])])},
+                 'fun': lambda x: np.array([1.5 - abs(x[1] + x[0])])},
                 {'type': 'ineq',
                  'fun': lambda x: np.array([abs(x[1] + x[0]) - 0.3])})
         # minimize what is desired
-        l_x = [-0.5, -0.5]
+        l_x = np.array([-0.5, -0.5]) * f_middle
         res = minimize(self._best_price, l_x, tol=10e-6,
-                       args=(f_middle, d, f_S0, na_V0, q),
+                       args=(f_middle, d, f_S0, na_V0, f_max),
                        bounds=bounds,
                        constraints=cons)
         if not res.success:
             raise UNSUCCESSFUL_ERROR
-        l_qty = list(res.x)
-        return [l_qty[0], f_middle, l_qty[1]]
+        l_x = list(res.x)
+        return [l_x[0], f_middle, l_x[1]]
 
     def get_middle_price(self, f_S0, na_V0, f_time):
         '''
@@ -1079,7 +1078,7 @@ class Derivative_UVM(object):
         # initialize and calculate the prices using OPTION
         na_x = np.array([self.l_qty[0], self.l_qty[2]])
         f_V = self.get_information(f_S0, f_time, 'price')
-        f_already_paid = sum(na_V0 * np.array(na_x))
+        f_already_paid = sum(na_V0 * na_x)
         return (f_V - f_already_paid) * self.l_qty[1]
 
     def plot_all_solutions(self, l_S, f_time=10e-6):
@@ -1190,14 +1189,14 @@ class Derivative_UVM(object):
         f_sigma = (f_volm+f_volM)/2.
 
         # initiate the arrays used in solution
-        na_S = np.zeros(i_NAS + 1)
-        na_payoff = np.zeros(i_NAS + 1)
-        na_V = np.zeros([i_NAS + 1, i_NTS+1])
-        na_Delta = np.zeros([i_NAS + 1, i_NTS+1])
-        na_Gamma = np.zeros([i_NAS + 1, i_NTS+1])
+        na_S = np.zeros(i_NAS)
+        na_payoff = np.zeros(i_NAS)
+        na_V = np.zeros([i_NAS, i_NTS])
+        na_Delta = np.zeros([i_NAS, i_NTS])
+        na_Gamma = np.zeros([i_NAS, i_NTS])
 
         # define the terminal value
-        for i in xrange(i_NAS+1):
+        for i in xrange(i_NAS):
             na_S[i] = i * dS
             f_rtn = self._get_payoff(na_S[i])
             # calculate the payoff at the end of the maturity
@@ -1205,13 +1204,13 @@ class Derivative_UVM(object):
             # store payoff
             na_payoff[i] = na_V[i][0]
         # time loop
-        for k in xrange(1, i_NTS+1):
+        for k in xrange(1, i_NTS):
             # asset loop
-            for i in xrange(1, i_NAS):
+            for i in xrange(1, i_NAS-1):
                 f_delta = (na_V[i+1][k-1] - na_V[i-1][k-1]) / (2.*dS)
                 f_gamma = (na_V[i+1][k-1] - 2 * na_V[i][k-1] + na_V[i-1][k-1])
                 f_gamma /= dS**2
-                f_vol = 0.
+                f_vol = f_sigma
                 if b_worstcase:
                     # worst case scenario
                     if f_gamma < 0.:
@@ -1233,7 +1232,7 @@ class Derivative_UVM(object):
             # boundaty codition at S=0
             na_V[0][k] = na_V[0][k-1] * (1. - f_intrate * dt)
             # boundary condition at S=infinity
-            na_V[i_NAS][k] = 2 * na_V[i_NAS-1][k] - na_V[i_NAS-2][k]
+            na_V[i_NAS-1][k] = 2 * na_V[i_NAS-2][k] - na_V[i_NAS-3][k]
             # checking for early exercise
             na_V.T[k] = self._early_exercise(na_V.T[k], na_payoff)
 
@@ -1242,7 +1241,7 @@ class Derivative_UVM(object):
         df_delta = pd.DataFrame(na_Delta)
         for df in [df_price, df_gamma, df_delta]:
             df.index = na_S
-            na_time = np.arange(i_NTS+1) * dt
+            na_time = np.arange(i_NTS) * dt
             na_time[-1] = f_expiration
             df.columns = na_time
 
@@ -1301,9 +1300,9 @@ class EuropianVanillaUvm(Derivative_UVM):
         if self.s_ptype == 'P':
             q = -1.
         # calculate the payoff
-        f_rtn = 0
+        f_rtn = 0.
         for f_qty, f_K in zip(self.l_qty, self.l_strike):
-            f_rtn += max(q * (f_asset_price - f_K), 0) * f_qty
+            f_rtn += (max(q * (f_asset_price - f_K), 0) * f_qty)
         return f_rtn
 
 
@@ -1359,7 +1358,7 @@ class AmericanVanillaUvm(Derivative_UVM):
         if self.s_ptype == 'P':
             q = -1.
         # calculate the payoff
-        f_rtn = 0
+        f_rtn = 0.
         for f_qty, f_K in zip(self.l_qty, self.l_strike):
-            f_rtn += max(q * (f_asset_price - f_K), 0) * f_qty
+            f_rtn += (max(q * (f_asset_price - f_K), 0) * f_qty)
         return f_rtn
